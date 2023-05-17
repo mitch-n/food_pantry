@@ -1,6 +1,7 @@
 import sqlite3, requests, sys, re
 from pprint import pprint
 from datetime import datetime
+from bs4 import BeautifulSoup
 
 con = sqlite3.connect("items.db")
 cur = con.cursor()
@@ -29,29 +30,32 @@ except sqlite3.OperationalError as e:
 
 
 def get_item_details(upc):
+	
+	name = None
+	description = None
+	cost = None
+	image = None
+	
 	#Search upcitemdb
 	print("Searching upcitemdb")
 	response = requests.get(f"https://api.upcitemdb.com/prod/trial/lookup?upc={upc}")
 	if response.status_code == 200 and response.json()["total"]>0:
 		print("Item found in upcitemdb")
 		item_found=True
-		
 		item = response.json()["items"][0]
+
+		name = item["title"] if not name else name
+		description = item["description"] if not description else description
 		
 		try:
-			cost = response.json()["offers"][0]["price"]
+			cost = response.json()["offers"][0]["price"] if not cost else cost
 		except Exception:
-			cost = "Not Found"
+			pass
 		
 		try:
-			image = item["images"][0]
+			image = item["images"][0] if not image else image
 		except Exception:
-			image = "Not Found"
-		
-		cur.execute("INSERT INTO item_details VALUES(?, ?, ?, ?, ?)", (upc, item["title"], item["description"], cost, image))
-		con.commit()
-		print("Item loaded into item_details")
-		return
+			pass
 	else:
 		print("Item not found in upcitemdb")
 		
@@ -68,10 +72,17 @@ def get_item_details(upc):
 	"""
 	
 	#Search buycott (Scraping)
-	"""
-	print("Searching buycott")
-	url = "https://www.buycott.com/upc/07811403"
-	"""
+	print("Searching Buycott")
+	response = requests.get(f"https://www.buycott.com/upc/{upc}")
+	if response.status_code == 200:
+		print("Item found in Buycott")
+		soup = BeautifulSoup(response.text, features="lxml")
+
+		name = soup.find("h2").text if not name else name
+		image_div = soup.find("div", {"class": "header_image"})
+		image = image_div.find("img")["src"] if not image else image
+	else:
+		print("Item not found in Buycott")
 	
 	#Search Barcode Report
 	print("Searching Barcode Report")
@@ -79,24 +90,21 @@ def get_item_details(upc):
 	if response.status_code == 200:
 		print("Item found in Barcode Report")
 		try:
-			match = re.search("<h1[^>]+>(?P<title>[^<]+)",response.text)
-			title = match.groups("title")[0]
+			match = re.search("<h1[^>]+>(?P<name>[^<]+)",response.text)
+			name = match.groups("name")[0] if not name else name
 		except:
-			print("Title not found in Barcode Report")
-			return
-		cur.execute("INSERT INTO item_details VALUES(?, ?, ?, ?, ?)", (upc, title, "Not Found", "Not Found", "Not Found"))
-		con.commit()
-		print("Item loaded into item_details")
-		return
+			print("Name not found in Barcode Report")
+
 	else:
 		print("Item not found in Barcode Report")
 	
 	
+	cur.execute("INSERT INTO item_details VALUES(?, ?, ?, ?, ?)", (upc, name if name else "Not Found", description if description else "Not Found", cost if cost else "Not Found", image if image else "Not Found"))
+	con.commit()
+	
 	return
-		
-print("Ready to Scan")
-while True:
-	upc = input(">> ")
+
+def add_item(upc):
 	cur.execute("INSERT INTO items VALUES(?, ?)", (upc, datetime.now()))
 	con.commit()
 	
@@ -107,6 +115,31 @@ while True:
 	if not res.fetchone():
 		print("Item details not found")
 		get_item_details(upc)
+	print(f"Added {upc}")
+		
+def remove_item(upc):
+	cur.execute("""DELETE FROM items WHERE id=? and date IN (SELECT date FROM items WHERE id=? ORDER BY date ASC LIMIT 1);""", [upc, upc])
+	con.commit()
+	print(f"Deleted oldest record for {upc}")
+
+mode = "ADD"
+print(f"Mode: {mode}")
+print("Ready to Scan")
+while True:
+	upc = input(">> ")
+	
+	if upc == "00000000":
+		mode = "REMOVE"
+		print("Set mode to REMOVE")
+	elif upc == "11111115":
+		mode = "ADD"
+		print("Set mode to ADD")
+	else:
+		if mode == "ADD":
+			add_item(upc)
+		if mode == "REMOVE":
+			remove_item(upc)
+
 	
 	
 	

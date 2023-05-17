@@ -142,7 +142,7 @@
 				<div class="item_info">
 					<!--<input class="item_title" value="{{ item['name'] }}" readonly>-->
 					<h3 class="item_title">{{ item['name'] }}<sup class="edit_title edit_button hidden" onclick="edit_value(this, 'title')">✎</sup></h3>
-					<p>QTY: <span class="item_qty">{{ item['quantity'] }}<sup class="edit_qty edit_button hidden" onclick="edit_value(this, 'qty')">✎</sup></span><br>
+					<p>QTY: <span class="item_qty">{{ item['quantity'] }}<sup class="edit_qty edit_button hidden" style="display:none" onclick="edit_value(this, 'qty')">✎</sup></span><br>
 					<span class="item_id">{{ item['id'] }}</span><span class="delete_item edit_button hidden" onclick="delete_item(this)">🗑</span></p>
 				</div>
 				
@@ -153,6 +153,41 @@
 	</div>
 
 <script>
+	
+	async function modify_item_api(upc, field, value){
+		fetch(window.location.href+"api/modify_item", {
+			method: "post",
+			headers: {
+				'Accept': 'application/json',
+				'Content-Type': 'application/json'
+				},
+			body: JSON.stringify({
+				upc: upc,
+				field: field,
+				value: value
+			})
+		})
+		.then( (response) => {
+			console.log(response.json())
+		})
+	}
+	
+	async function delete_item_api(upc){
+		fetch(window.location.href+"api/delete_item", {
+			method: "post",
+			headers: {
+				'Accept': 'application/json',
+				'Content-Type': 'application/json'
+				},
+			body: JSON.stringify({
+				upc: upc
+			})
+		})
+		.then( (response) => {
+			console.log(response.json())
+		})
+	}
+	
 	function edit_value(elem, type){
 		edit_button = elem.outerHTML
 		value = elem.parentElement.innerText
@@ -161,6 +196,9 @@
 		if (type=="title"){
 			new_value = prompt("Rename "+value, value)
 			//Put in API call to update the title in the database
+			upc = elem.parentElement.nextElementSibling.children[2].innerText
+			
+			modify_item_api(upc, "name", new_value)
 			
 			elem.parentElement.innerHTML = new_value+edit_button
 		}
@@ -168,13 +206,18 @@
 			new_value = prompt("Enter Quantity")
 			//Put in API call to update the quantity in the database
 			if (new_value.length<4 && !isNaN(new_value)){
+				upc = elem.parentElement.nextElementSibling.nextElementSibling.innerText				
 				elem.parentElement.innerHTML = new_value+edit_button
 			}
 		}
 		else if (type=="image"){
-			new_value = prompt("Proide Image URL")
+			new_value = prompt("Provide Image URL")
 			//Put in API call to update the image in the database
 			if (new_value){
+				upc = elem.parentElement.nextElementSibling.children[1].children[2].innerText
+				
+				modify_item_api(upc, "image", new_value)
+				
 				elem.previousElementSibling.src = new_value
 			}
 		}
@@ -187,10 +230,11 @@
 		
 		if(confirm("Are you sure you want to delete "+item_name+"?") == true){
 			//Put in API call to delete item from items table
+			upc = elem.previousElementSibling.innerText
+			delete_item_api(upc)
+			elem.parentElement.parentElement.parentElement.remove()
 			
 		}
-		
-		elem.parentElement.parentElement.parentElement.remove()
 	}
 	function expand_item(elem,action){
 		buttons = elem.getElementsByClassName("edit_button")
