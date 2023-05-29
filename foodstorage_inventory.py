@@ -1,9 +1,36 @@
-import sqlite3, requests, sys, re
+import sqlite3, requests, sys, re, time
 from pprint import pprint
 from datetime import datetime
 from bs4 import BeautifulSoup
+import Adafruit_SSD1306
+from PIL import Image, ImageDraw, ImageFont
 
-con = sqlite3.connect("items.db")
+RST = None     # on the PiOLED this pin isnt used
+disp = Adafruit_SSD1306.SSD1306_128_32(rst=RST)
+disp.begin()
+disp.clear()
+disp.display()
+
+image = Image.new('1', (disp.width, disp.height))
+draw = ImageDraw.Draw(image)
+font = ImageFont.truetype('/home/pi/food_pantry/Pixellari.ttf', 16)
+
+padding = 0
+top = padding
+bottom = disp.height-padding
+x = 0
+
+def write(top_text="", bottom_text=""):
+	draw.rectangle((0,0,disp.width,disp.height), outline=0, fill=0)
+	draw.text((x, top), top_text,  font=font, fill=255)
+	draw.text((x, top+15), bottom_text,  font=font, fill=255)
+	disp.image(image)
+	disp.display()
+
+scan_queue="/home/pi/food_pantry/scan_queue.txt"
+db_location="/home/pi/food_pantry/items.db"
+
+con = sqlite3.connect(db_location)
 cur = con.cursor()
 
 # Create Items database
@@ -76,7 +103,7 @@ def get_item_details(upc):
 	response = requests.get(f"https://www.buycott.com/upc/{upc}")
 	if response.status_code == 200:
 		print("Item found in Buycott")
-		soup = BeautifulSoup(response.text, features="lxml")
+		soup = BeautifulSoup(response.text)
 
 		name = soup.find("h2").text if not name else name
 		image_div = soup.find("div", {"class": "header_image"})
@@ -125,23 +152,53 @@ def remove_item(upc):
 mode = "ADD"
 print(f"Mode: {mode}")
 print("Ready to Scan")
-while True:
-	upc = input(">> ")
-	
-	if upc == "00000000":
-		mode = "REMOVE"
-		print("Set mode to REMOVE")
-	elif upc == "11111115":
-		mode = "ADD"
-		print("Set mode to ADD")
-	else:
-		if mode == "ADD":
-			add_item(upc)
-		if mode == "REMOVE":
-			remove_item(upc)
+write(f"Mode: {mode}", "Scanner Ready")
 
+start_time = datetime.now()
+cur_count = 1
+cur_upc = 0
+
+while True:
+	with open(scan_queue, "r+") as f:
+		print("OPENED FILE")
+		for upc in f.readlines():
+			start_time = datetime.now()
+			upc = upc.strip()
+			print(upc)
+
+			if upc != cur_upc:
+				cur_count = 1
+				cur_upc = upc
+			else:
+				cur_count += 1
+
+			if upc == "00000000":
+				mode = "REMOVE"
+				print("Set mode to REMOVE")
+			elif upc == "11111115":
+				mode = "ADD"
+				print("Set mode to ADD")
+			else:
+				if mode == "ADD":
+					add_item(upc)
+				elif mode == "REMOVE":
+					remove_item(upc)
 	
-	
+				res = cur.execute("SELECT COUNT(*) AS quantity FROM items WHERE id=?", [upc])
+				#item = dict(res.fetchone())
+				item = res.fetchone()
+				write(f"{upc}", f"Scanned Ct: {cur_count}")
+				# time.sleep(.2)
+		f.seek(0)
+		f.write("")
+		f.truncate()
+
+	duration = datetime.now() - start_time
+	if duration.seconds > 60:
+		write()
+	elif duration.seconds > 10:
+		write(f"Mode: {mode}", "")
+	time.sleep(.2)
 	
 	
 	
