@@ -2,17 +2,21 @@ from flask import Flask, render_template, request
 import sqlite3, requests, sys, re
 from pprint import pprint
 from datetime import datetime
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 app=Flask(__name__)
+app.wsgi_app = ProxyFix(
+    app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
+)
 
-
-database_location = "../items.db"
+database_location = "/home/pi/food_pantry/items.db"
 
 @app.route("/")
 def home():
 	con = sqlite3.connect(database_location)
 	con.row_factory = sqlite3.Row
 	cur = con.cursor()
-	cur.execute("SELECT i.id, i.date, d.name, d.image, COUNT(*) AS quantity FROM items i LEFT JOIN item_details d ON i.id=d.id GROUP BY i.id")
+	cur.execute("SELECT i.id, i.date, d.name, d.image, COUNT(*) AS quantity FROM items i LEFT JOIN item_details d ON i.id=d.id WHERE LENGTH(i.id)>1 GROUP BY i.id")
 	items = cur.fetchall()
 	mod_items = []
 	for item in items:
@@ -57,7 +61,7 @@ def delete_item():
 		return {"message": e}
 		
 if __name__ == '__main__':
-	app.run(host="0.0.0.0", port=80)
+	app.run(host="0.0.0.0", port=5000, debug=True)
 
 		
 	
